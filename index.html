@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OS Kahoot</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f9; margin: 0; padding: 20px; }
+        .hidden { display: none !important; }
+        .screen { background: white; max-width: 800px; margin: 0 auto; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        
+        #answers-container { display: flex; flex-wrap: wrap; justify-content: space-between; margin-top: 20px; }
+        .btn { 
+            width: 48%; padding: 25px 10px; margin-bottom: 15px; font-size: 20px; 
+            cursor: pointer; border: 2px solid rgba(0,0,0,0.2); border-radius: 8px; font-weight: bold;
+            color: #ffffff !important; /* Vynucená bílá i přes Dark Reader */
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+            box-sizing: border-box; transition: opacity 0.2s;
+        }
+        /* Vynucené barvy pozadí */
+        .btn-a { background-color: #e21b3c !important; } 
+        .btn-b { background-color: #1368ce !important; }
+        .btn-c { background-color: #d89e00 !important; } 
+        .btn-d { background-color: #26890c !important; }
+        
+        input[type="text"] { padding: 10px; font-size: 18px; width: 80%; margin-bottom: 20px; text-align: center; border: 1px solid #ccc; border-radius: 5px; }
+        #join-btn { background: #333; color: white; padding: 12px 25px; font-size: 18px; cursor: pointer; border: none; border-radius: 5px; font-weight: bold;}
+        #lb-list { list-style: none; padding: 0; font-size: 22px; text-align: left; width: 80%; margin: 0 auto; }
+        #lb-list li { padding: 15px; border-bottom: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+
+<div id="screen-login" class="screen">
+    <h2>Vítej ve hře!</h2>
+    <input type="text" id="nickname" placeholder="Zadej svou přezdívku" autocomplete="off">
+    <br>
+    <button id="join-btn" onclick="joinGame()">Vstoupit do hry</button>
+    <p id="login-error" style="color: red; font-weight: bold; margin-top: 15px;"></p>
+</div>
+
+<div id="screen-waiting" class="screen hidden">
+    <h2>Jsi ve hře!</h2>
+    <p id="waiting-msg" style="font-size: 20px;">Čekáme na admina, až spustí další krok...</p>
+</div>
+
+<div id="screen-question" class="screen hidden">
+    <h2 id="q-text" style="font-size: 28px; margin-bottom: 10px;">Načítám otázku...</h2>
+    <h3 style="color: #e21b3c; font-size: 24px;">Zbývá: <span id="time-left"></span> s</h3>
+    <div id="answers-container">
+        <button class="btn btn-a" id="btn-a" onclick="sendAnswer('A')">Možnost A</button>
+        <button class="btn btn-b" id="btn-b" onclick="sendAnswer('B')">Možnost B</button>
+        <button class="btn btn-c" id="btn-c" onclick="sendAnswer('C')">Možnost C</button>
+        <button class="btn btn-d" id="btn-d" onclick="sendAnswer('D')">Možnost D</button>
+    </div>
+</div>
+
+<div id="screen-leaderboard" class="screen hidden">
+    <h2>🏆 Průběžné výsledky</h2>
+    <ul id="lb-list"></ul>
+</div>
+
+<script>
+    let myPlayerId = null;
+    let hasAnswered = false;
+    let currentPhase = '';
+
+    async function joinGame() {
+        let nickname = document.getElementById('nickname').value;
+        if (!nickname) return;
+        
+        try {
+            let response = await fetch('api_join.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `nickname=${encodeURIComponent(nickname)}`
+            });
+            let data = await response.json();
+            
+            if (data.error) {
+                document.getElementById('login-error').innerText = data.error;
+            } else {
+                myPlayerId = data.player_id;
+                switchScreen('screen-waiting');
+                startGameLoop();
+            }
+        } catch (err) {
+            document.getElementById('login-error').innerText = "Chyba připojení k serveru.";
+        }
+    }
+
+    async function sendAnswer(option) {
+        if (hasAnswered || currentPhase !== 'question') return;
+        hasAnswered = true; 
+        document.getElementById('answers-container').style.opacity = '0.4';
+        
+        await fetch('api_answer.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `answer=${option}&player_id=${myPlayerId}`
+        });
+    }
+
+    function startGameLoop() {
+        setInterval(async () => {
+            try {
+                let response = await fetch('api_status.php');
+                let data = await response.json();
+
+                if (data.phase === 'question' && currentPhase !== 'question') {
+                    hasAnswered = false; 
+                    document.getElementById('answers-container').style.opacity = '1';
+                }
+                currentPhase = data.phase;
+
+                if (data.phase === 'waiting' || data.phase === 'round_ended') {
+                    switchScreen('screen-waiting');
+                    document.getElementById('waiting-msg').innerText = "Čekáme na admina...";
+                } 
+                else if (data.phase === 'question') {
+                    switchScreen('screen-question');
+                    document.getElementById('time-left').innerText = data.remaining;
+                    document.getElementById('q-text').innerText = data.question.question_text || "Chyba načtení otázky";
+                    
+                    // Bezpečné vložení textu. Pokud by element neexistoval, skript nespadne.
+                    let btnA = document.getElementById('btn-a');
+                    let btnB = document.getElementById('btn-b');
+                    let btnC = document.getElementById('btn-c');
+                    let btnD = document.getElementById('btn-d');
+
+                    if(btnA) btnA.innerText = "A: " + (data.question.option_a || '-');
+                    if(btnB) btnB.innerText = "B: " + (data.question.option_b || '-');
+                    if(btnC) btnC.innerText = "C: " + (data.question.option_c || '-');
+                    if(btnD) btnD.innerText = "D: " + (data.question.option_d || '-');
+                }
+              
+else if (data.phase === 'result') {
+    switchScreen('screen-waiting'); 
+    // Zobrazíme PÍSMENO i SLOVO
+    document.getElementById('waiting-msg').innerHTML = `
+        <div style="font-size: 24px;">Správná odpověď:</div>
+        <div style="font-size: 48px; color: #26890c; font-weight: bold;">
+            ${data.correct_letter}: ${data.correct_text}
+        </div>
+    `;
+}
+                else if (data.phase === 'leaderboard') {
+                    switchScreen('screen-leaderboard');
+                    let listHTML = '';
+                    if (data.leaderboard && data.leaderboard.length > 0) {
+                        data.leaderboard.forEach((p, i) => {
+                            listHTML += `<li><strong>${i + 1}.</strong> ${p.name} <span style="float:right; color:#e21b3c; font-weight:bold;">${p.score} b</span></li>`;
+                        });
+                    } else {
+                        listHTML = "<li>Zatím nikdo nemá body.</li>";
+                    }
+                    document.getElementById('lb-list').innerHTML = listHTML;
+                }
+            } catch (error) {
+                console.error("Chyba ve vteřinovém intervalu:", error);
+            }
+        }, 1000);
+    }
+
+    function switchScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(el => el.classList.add('hidden'));
+        let target = document.getElementById(screenId);
+        if(target) target.classList.remove('hidden');
+    }
+</script>
+
+</body>
+</html>
