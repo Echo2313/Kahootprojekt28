@@ -1,20 +1,26 @@
-# Pouûijeme PHP s Apachem
+# Pou≈æijeme PHP s Apachem
 FROM php:8.2-apache
 
-# Instalace pot¯ebn˝ch rozöÌ¯enÌ pro komunikaci s datab·zÌ a AI
+# Instalace pot≈ôebn√Ωch roz≈°√≠≈ôen√≠
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     pkg-config \
     libssl-dev \
     && docker-php-ext-install curl
 
-# PovolenÌ mod_rewrite pro Apache (uûiteËnÈ pro Ëist· URL)
+# Povolen√≠ mod_rewrite
 RUN a2enmod rewrite
 
-# ZkopÌrov·nÌ tv˝ch soubor˘ do kontejneru
-COPY . /var/www/html/
+# ---- ≈òE≈†EN√ç PRO READ-ONLY SERVER (≈†KOLN√ç LIMITY) ----
+# P≈ôinut√≠me Apache pou≈æ√≠vat povolenou slo≈æku /tmp
+ENV APACHE_PID_FILE=/tmp/apache2.pid
+ENV APACHE_RUN_DIR=/tmp
+ENV APACHE_LOCK_DIR=/tmp
+# P≈ôinut√≠me PHP ukl√°dat session (p≈ôihl√°≈°en√≠ admina) do /tmp
+RUN echo "session.save_path = '/tmp'" > /usr/local/etc/php/conf.d/session.ini
+# -----------------------------------------------------
 
-# NastavenÌ pr·v, aby PHP mohlo zapisovat
-RUN chown -R www-data:www-data /var/www/html/
+# Zkop√≠rov√°n√≠ tv√Ωch soubor≈Ø do kontejneru
+COPY . /var/www/html/
 
 EXPOSE 80
