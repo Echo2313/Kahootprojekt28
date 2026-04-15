@@ -11,16 +11,15 @@ RUN apt-get update && apt-get install -y \
 # Povolení mod_rewrite
 RUN a2enmod rewrite
 
-# ---- AGRESIVNÍ ŘEŠENÍ PRO READ-ONLY SERVER ----
-# Apache ignoruje naše ENV proměnné, takže mu ty cesty
-# k zamčeným složkám fyzicky přepíšeme přímo v jeho "mozku" (envvars).
-RUN sed -i 's|export APACHE_RUN_DIR=.*|export APACHE_RUN_DIR=/tmp|g' /etc/apache2/envvars && \
-    sed -i 's|export APACHE_LOCK_DIR=.*|export APACHE_LOCK_DIR=/tmp|g' /etc/apache2/envvars && \
-    sed -i 's|export APACHE_LOG_DIR=.*|export APACHE_LOG_DIR=/tmp|g' /etc/apache2/envvars
+# ---- ABSOLUTNÍ ŘEŠENÍ PRO READ-ONLY SERVER (ČERVÍ DÍRA) ----
+# Smažeme originální zamčené složky a nahradíme je zástupci,
+# kteří vše tajně přesměrují do povolené paměti v /tmp.
+RUN rm -rf /var/run/apache2 && ln -s /tmp /var/run/apache2
+RUN rm -rf /var/log/apache2 && ln -s /tmp /var/log/apache2
 
-# Přinutíme PHP ukládat session (přihlášení admina) do /tmp
+# PHP sessions také pošleme do /tmp
 RUN echo "session.save_path = '/tmp'" > /usr/local/etc/php/conf.d/session.ini
-# -----------------------------------------------
+# -----------------------------------------------------------
 
 # Zkopírování tvých souborů do kontejneru
 COPY . /var/www/html/
