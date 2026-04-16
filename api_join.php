@@ -1,47 +1,71 @@
 <?php
-// Zpracování pøihlášení nového hráèe do ChromaDB
-$name = trim($_POST['name'] ?? '');
-if (empty($name)) die("Prazdne jmeno");
+$json = json_decode(file_get_contents('php://input'), true);
+$name = trim($_POST['nickname'] ?? $_POST['name'] ?? $json['nickname'] ?? '');
 
-$chromaUrl = "http://db:8000/api/v1";
+if (empty($name)) {
+    echo json_encode(["error" => "Prazdne jmeno."]);
+    exit;
+}
+
+$chromaUrl = "http://127.0.0.1:8000/api/v1";
 
 function chromaJoinReq($method, $path, $data = null) {
     global $chromaUrl;
     $ch = curl_init($chromaUrl . $path);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 5); // NeÄekÃ¡me dlouho
     if ($data) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
     }
     $res = curl_exec($ch);
+    $err = curl_error($ch);
     curl_close($ch);
-    return json_decode($res, true);
+    
+    // Pokud selÅ¾e samotnÃ© spojenÃ­ (DB nebÄ›Å¾Ã­, spadla, Å¡patnÃ½ port)
+    if ($res === false) return ["api_error" => "SpojenÃ­ selhalo: " . $err];
+    
+    return json_decode($res, true) ?? ["api_error" => "ChybnÃ½ formÃ¡t od DB: " . $res];
 }
 
-// Najdeme ID kolekce 'players'
+// 1. ZjistÃ­me kolekce
 $cols = chromaJoinReq("GET", "/collections");
 $colId = null;
-if (is_array($cols)) {
+if (is_array($cols) && !isset($cols['api_error'])) {
     foreach ($cols as $c) { 
         if (isset($c['name']) && $c['name'] === 'players') $colId = $c['id']; 
     }
 }
 
-if (!$colId) die("Hra neni pripravena (Admin musi udelat reset).");
+// 2. VytvoÅ™Ã­me kolekci, pokud nenÃ­
+$newCol = [];
+if (!$colId && !isset($cols['api_error'])) {
+    $newCol = chromaJoinReq("POST", "/collections", ["name" => "players"]);
+    $colId = $newCol['id'] ?? null;
+}
 
-// Vygenerujeme unikátní ID pro hráèe
+// 3. VÃ½pis PÅ˜ESNÃ‰ CHYBY, pokud nemÃ¡me ID kolekce
+if (!$colId) {
+    $errorMsg = $cols['api_error'] ?? $newCol['api_error'] ?? json_encode($newCol);
+    echo json_encode(["error" => "Detail chyby DB: " . $errorMsg]);
+    exit;
+}
+
+// 4. UloÅ¾enÃ­ hrÃ¡Äe
 $playerId = "p_" . time() . "_" . rand(1000, 9999);
-
-// Vložíme hráèe do ChromaDB
 $data = [
     "ids" => [$playerId],
     "metadatas" => [["name" => $name, "score" => 0, "streak" => 0, "answered" => 0]],
     "documents" => ["player"]
 ];
 
-chromaJoinReq("POST", "/collections/$colId/upsert", $data);
+$upsert = chromaJoinReq("POST", "/collections/$colId/upsert", $data);
 
-// Vrátíme ID hráèe do jeho mobilu (JavaScriptu)
-echo $playerId;
+if (isset($upsert['api_error'])) {
+     echo json_encode(["error" => "Chyba pÅ™i zÃ¡pisu hrÃ¡Äe: " . $upsert['api_error']]);
+     exit;
+}
+
+echo json_encode(["player_id" => $playerId]);
 ?>
