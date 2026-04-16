@@ -7,24 +7,30 @@ if (empty($name)) {
     exit;
 }
 
-$chromaUrl = "http://127.0.0.1:8000/api/v1";
+$chromaUrl = "http://db:8000/api/v1";
 
+// FUNKCE BEZ cURL (Odolná proti chybám školní sítě)
 function chromaJoinReq($method, $path, $data = null) {
     global $chromaUrl;
-    $ch = curl_init($chromaUrl . $path);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5); // Nečekáme dlouho
+    $options = [
+        "http" => [
+            "method" => $method,
+            "header" => "Content-Type: application/json\r\n",
+            "timeout" => 5,
+            "ignore_errors" => true
+        ]
+    ];
     if ($data) {
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+        $options["http"]["content"] = json_encode($data);
     }
-    $res = curl_exec($ch);
-    $err = curl_error($ch);
-    curl_close($ch);
     
-    // Pokud selže samotné spojení (DB neběží, spadla, špatný port)
-    if ($res === false) return ["api_error" => "Spojení selhalo: " . $err];
+    $context = stream_context_create($options);
+    $res = @file_get_contents($chromaUrl . $path, false, $context);
+    
+    if ($res === false) {
+        $error = error_get_last();
+        return ["api_error" => "Stream selhal: " . ($error['message'] ?? 'Neznámá chyba sítě')];
+    }
     
     return json_decode($res, true) ?? ["api_error" => "Chybný formát od DB: " . $res];
 }
@@ -45,7 +51,7 @@ if (!$colId && !isset($cols['api_error'])) {
     $colId = $newCol['id'] ?? null;
 }
 
-// 3. Výpis PŘESNÉ CHYBY, pokud nemáme ID kolekce
+// 3. Výpis PŘESNÉ CHYBY
 if (!$colId) {
     $errorMsg = $cols['api_error'] ?? $newCol['api_error'] ?? json_encode($newCol);
     echo json_encode(["error" => "Detail chyby DB: " . $errorMsg]);
