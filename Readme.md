@@ -4,7 +4,7 @@ Kahoot s AI generátorem
 
 funkce:
 
-V admin panelu do promptu napíšeme požadavky na otázky
+V admin panelu(https://viktor-michal.kurim.ithope.eu/admin.php) do promptu napíšeme požadavky na otázky
 PHP aplikace pošle dotaz na ollamu
 Ollama pošle zpět čistý JSON soubor
 Aplikace si vezme soubor rozebere ho otázky si uloží přímo do databáze chromaDB
