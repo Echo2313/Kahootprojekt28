@@ -24,4 +24,4 @@ EXPOSE 80
 ENV PHP_CLI_SERVER_WORKERS=20
 
 # Spustíme zabudovaný PHP server, který nepotřebuje ukládat vůbec nic!
-CMD ["php", "-S", "0.0.0.0:80"]
+CMD ["php", "-S", "0.0.0.0:80", "-t", "/var/www/html/"]
